@@ -24,9 +24,11 @@
     "README.md"
   ],
   "scripts": {
+    "lint": "eslint \"src/**/*.ts\"",
+    "typecheck": "tsc --noEmit",
     "build": "tsc",
     "test": "jest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run lint && npm run typecheck && npm run build"
   },
   "keywords": [
     "syncro",
@@ -42,6 +44,9 @@
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "@types/node": "^25.6.0",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "eslint": "^8.56.0",
     "jest": "^30.3.0",
     "ts-jest": "^29.2.5",
     "ts-node": "^10.9.2",

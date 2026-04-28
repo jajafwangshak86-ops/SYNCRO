@@ -1,29 +1,30 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { defineConfig } from 'vitest/config';
+import { defineConfig } from "vitest/config";
 
 const dirname =
-  typeof __dirname !== 'undefined' ? __dirname : path.dirname(fileURLToPath(import.meta.url));
+  typeof __dirname !== "undefined"
+    ? __dirname
+    : path.dirname(fileURLToPath(import.meta.url));
 
-// More info at: https://storybook.js.org/docs/next/writing-tests/integrations/vitest-addon
 export default defineConfig({
   resolve: {
     alias: {
-      '@': dirname,
+      "@": path.resolve(dirname, "."),
     },
   },
   test: {
     globals: true,
-    name: 'unit',
-    environment: 'jsdom',
-    setupFiles: ['./vitest.setup.ts'],
+    name: "unit",
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
     include: [
-      'hooks/**/*.test.ts',
-      'hooks/**/*.test.tsx',
-      'lib/**/*.test.ts',
-      'lib/**/*.test.tsx',
+      "hooks/**/*.test.ts",
+      "hooks/**/*.test.tsx",
+      "lib/**/*.test.ts",
+      "lib/**/*.test.tsx",
     ],
-    exclude: ['e2e/**', 'node_modules/**'],
+    exclude: ["e2e/**", "node_modules/**"],
   },
 });

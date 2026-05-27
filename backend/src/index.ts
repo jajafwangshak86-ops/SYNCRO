@@ -57,6 +57,8 @@ import { createAdminLimiter, RateLimiterFactory } from './middleware/rate-limit-
 import { scheduleAutoResume } from './jobs/auto-resume';
 import giftCardLedgerRoutes from './routes/gift-card-ledger';
 import notificationDeadLetterRoutes from './routes/notification-dead-letter';
+import telegramWebhookRoutes from './routes/telegram-webhook';
+import { telegramCommandService } from './services/telegram-command-service';
 import { errorHandler } from './middleware/errorHandler';
 import { swaggerSpec } from './swagger';
 
@@ -135,6 +137,7 @@ app.use('/api/wallet', walletRoutes);
 app.use('/api/notifications/dead-letter', notificationDeadLetterRoutes);
 app.use('/api/exchange-rates', createExchangeRatesRouter(exchangeRateService));
 app.use('/api/gift-card-ledger', giftCardLedgerRoutes);
+app.use('/api/telegram', telegramWebhookRoutes);
 
 app.get('/api/reminders/status', (req, res) => {
   const status = schedulerService.getStatus();
@@ -385,12 +388,18 @@ const server = app.listen(PORT, async () => {
   }
 
   scheduleAutoResume();
+
+  telegramCommandService.init();
+  if (process.env.TELEGRAM_BOT_TOKEN && !process.env.TELEGRAM_WEBHOOK_SECRET) {
+    logger.warn('[Telegram] TELEGRAM_WEBHOOK_SECRET not set — webhook origin is unverified');
+  }
 });
 
 // Graceful shutdown
 const shutdown = () => {
   logger.info('Shutting down gracefully');
   schedulerService.stop();
+  telegramCommandService.stop();
   eventListener.stop();
   server.close(() => {
     logger.info('Server closed');

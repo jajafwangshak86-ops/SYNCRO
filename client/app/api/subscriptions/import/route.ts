@@ -9,7 +9,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-import { RateLimiters } from "@/lib/api/index"
+import { RateLimiters, ApiErrors } from "@/lib/api/index"
 
 // ─── Validation (mirrors backend csv-import-service) ─────────────────────
 
@@ -205,7 +205,7 @@ export async function POST(request: NextRequest) {
 
     if (toInsert.length > 0) {
       const { error } = await supabase.from("subscriptions").insert(toInsert)
-      if (error) throw new Error(`Import failed: ${error.message}`)
+      if (error) throw ApiErrors.internalError(`Import failed: ${error.message}`)
     }
 
     const result = {

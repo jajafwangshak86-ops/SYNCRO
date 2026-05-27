@@ -65,6 +65,8 @@ import type {
     SubscriptionUpdates,
 } from "./app-client.types";
 
+import { UserSettingsProvider } from "@/components/providers/user-settings-provider";
+
 interface AppContentProps extends AppClientProps {}
 
 export function AppClient({
@@ -75,17 +77,21 @@ export function AppClient({
     initialConsolidationSuggestions = [],
 }: AppClientProps) {
     return (
-        <UndoProvider>
-            <AppContent
-                initialSubscriptions={initialSubscriptions}
-                initialEmailAccounts={initialEmailAccounts}
-                initialPayments={initialPayments}
-                initialPriceChanges={initialPriceChanges}
-                initialConsolidationSuggestions={initialConsolidationSuggestions}
-            />
-        </UndoProvider>
+        <UserSettingsProvider>
+            <UndoProvider>
+                <AppContent
+                    initialSubscriptions={initialSubscriptions}
+                    initialEmailAccounts={initialEmailAccounts}
+                    initialPayments={initialPayments}
+                    initialPriceChanges={initialPriceChanges}
+                    initialConsolidationSuggestions={initialConsolidationSuggestions}
+                />
+            </UndoProvider>
+        </UserSettingsProvider>
     );
 }
+
+import { useUserSettings } from "@/components/providers/user-settings-provider";
 
 function AppContent({
     initialSubscriptions,
@@ -100,7 +106,12 @@ function AppContent({
     initialPriceChanges?: PriceChange[];
     initialConsolidationSuggestions?: ConsolidationSuggestion[];
 }) {
+    // User Settings
+    const { settings, updateSettings: updateUserSettings } = useUserSettings();
+    const currency = settings.currency;
+
     // Analytics state
+
     const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | undefined>(undefined);
 
     // App state
@@ -126,7 +137,6 @@ function AppContent({
     const [showEditSubscription, setShowEditSubscription] = useState(false);
     const [showDeletedPanel, setShowDeletedPanel] = useState(false);
     const [isLoadingSubscriptions, setIsLoadingSubscriptions] = useState(true);
-    const [currency, setCurrency] = useState<Currency>("USD");
     const [exchangeRates, setExchangeRates] = useState<Record<string, number>>({});
     const [ratesStale, setRatesStale] = useState(false);
     const [isOffline, setIsOffline] = useState(false);
@@ -247,7 +257,7 @@ function AppContent({
     const recurringSpend = calculateRecurringSpend(subscriptionsArray);
     const totalSpend = calculateTotalSpend(subscriptionsArray);
     const renewalReminders = checkRenewalReminders(subscriptionsArray);
-    const budgetAlert = checkBudgetAlerts(totalSpend, budgetLimit);
+    const budgetAlert = checkBudgetAlerts(totalSpend, budgetLimit, currency);
 
     const { notifications, unreadNotifications, handleMarkNotificationRead } =
         useNotifications({
@@ -723,7 +733,9 @@ function AppContent({
                                 onBudgetChange={handleBudgetChange}
                                 darkMode={darkMode}
                                 currency={currency}
-                                onCurrencyChange={(c: Currency) => setCurrency(c)}
+                                onCurrencyChange={(c: Currency) => updateUserSettings({ currency: c })}
+                                timezone={settings.timezone}
+                                onTimezoneChange={(tz: string) => updateUserSettings({ timezone: tz })}
                                 payments={payments}
                                 onRefund={async (transactionId: string) => {
                                     try {

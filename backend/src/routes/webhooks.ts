@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { webhookService } from '../services/webhook-service';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { validate } from '../middleware/validate';
 import logger from '../config/logger';
 import { createWebhookSchema, updateWebhookSchema } from '../schemas/webhook';
@@ -13,7 +14,7 @@ router.use(authenticate);
 /**
  * POST /api/webhooks
  */
-router.post('/', validate(createWebhookSchema), async (req: AuthenticatedRequest, res: Response) => {
+router.post('/', requireRole('owner', 'admin'), validate(createWebhookSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const webhook = await webhookService.registerWebhook(req.user!.id, req.body);
     res.status(201).json({ success: true, data: webhook });
@@ -29,7 +30,7 @@ router.post('/', validate(createWebhookSchema), async (req: AuthenticatedRequest
 /**
  * GET /api/webhooks
  */
-router.get('/', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const webhooks = await webhookService.listWebhooks(req.user!.id);
     res.json({ success: true, data: webhooks });
@@ -45,7 +46,7 @@ router.get('/', async (req: AuthenticatedRequest, res: Response) => {
 /**
  * PUT /api/webhooks/:id
  */
-router.put('/:id', validate(updateWebhookSchema), async (req: AuthenticatedRequest, res: Response) => {
+router.put('/:id', requireRole('owner', 'admin'), validate(updateWebhookSchema), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const webhook = await webhookService.updateWebhook(
       req.user!.id,
@@ -65,7 +66,7 @@ router.put('/:id', validate(updateWebhookSchema), async (req: AuthenticatedReque
 /**
  * DELETE /api/webhooks/:id
  */
-router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     await webhookService.deleteWebhook(
       req.user!.id,
@@ -84,7 +85,7 @@ router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
 /**
  * POST /api/webhooks/:id/test
  */
-router.post('/:id/test', async (req: AuthenticatedRequest, res: Response) => {
+router.post('/:id/test', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const delivery = await webhookService.triggerTestEvent(
       req.user!.id,
@@ -103,7 +104,7 @@ router.post('/:id/test', async (req: AuthenticatedRequest, res: Response) => {
 /**
  * GET /api/webhooks/:id/deliveries
  */
-router.get('/:id/deliveries', async (req: AuthenticatedRequest, res: Response) => {
+router.get('/:id/deliveries', requireRole('owner', 'admin'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const deliveries = await webhookService.getDeliveries(
       req.user!.id,

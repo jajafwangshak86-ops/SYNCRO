@@ -47,6 +47,7 @@ import { ExchangeRateService } from './services/exchange-rate/exchange-rate-serv
 import { FiatRateProvider } from './services/exchange-rate/fiat-provider';
 import { CryptoRateProvider } from './services/exchange-rate/crypto-provider';
 import { monitoringService } from './services/monitoring-service';
+import type { FailedItemsResult } from './services/monitoring-service';
 import { healthService } from './services/health-service';
 import { eventListener } from './services/event-listener';
 import { expiryService } from './services/expiry-service';
@@ -163,6 +164,110 @@ app.get('/api/admin/metrics/activity', createAdminLimiter(), adminAuth, async (r
     res.json(metrics);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch agent activity' });
+  }
+});
+
+// ── Issue #99: Async ops dashboard metrics ───────────────────────────────────
+
+app.get('/api/admin/metrics/throughput', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const w = req.query.window as string;
+    const windowHours = w ? parseInt(w, 10) : 24;
+    if (isNaN(windowHours) || windowHours < 1 || windowHours > 720) {
+      return res.status(400).json({ error: 'window must be between 1 and 720 hours' });
+    }
+    const metrics = await monitoringService.getThroughputMetrics(windowHours);
+    res.json(metrics);
+  } catch (error) {
+    logger.error('Error fetching throughput metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch throughput metrics' });
+  }
+});
+
+app.get('/api/admin/metrics/latency', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const w = req.query.window as string;
+    const windowHours = w ? parseInt(w, 10) : 24;
+    if (isNaN(windowHours) || windowHours < 1 || windowHours > 720) {
+      return res.status(400).json({ error: 'window must be between 1 and 720 hours' });
+    }
+    const metrics = await monitoringService.getLatencyMetrics(windowHours);
+    res.json(metrics);
+  } catch (error) {
+    logger.error('Error fetching latency metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch latency metrics' });
+  }
+});
+
+app.get('/api/admin/metrics/retries', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const w = req.query.window as string;
+    const windowHours = w ? parseInt(w, 10) : 24;
+    if (isNaN(windowHours) || windowHours < 1 || windowHours > 720) {
+      return res.status(400).json({ error: 'window must be between 1 and 720 hours' });
+    }
+    const metrics = await monitoringService.getRetryMetrics(windowHours);
+    res.json(metrics);
+  } catch (error) {
+    logger.error('Error fetching retry metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch retry metrics' });
+  }
+});
+
+app.get('/api/admin/metrics/failed-items', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const type = req.query.type as string;
+    if (!type || !['reminder', 'renewal', 'blockchain'].includes(type)) {
+      return res.status(400).json({
+        error: 'type is required and must be one of: reminder, renewal, blockchain',
+      });
+    }
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const offset = parseInt(req.query.offset as string) || 0;
+    const result: FailedItemsResult = await monitoringService.getFailedItems(
+      type as 'reminder' | 'renewal' | 'blockchain',
+      limit,
+      offset,
+    );
+    res.json(result);
+  } catch (error) {
+    logger.error('Error fetching failed items:', error);
+    res.status(500).json({ error: 'Failed to fetch failed items' });
+  }
+});
+
+app.get('/api/admin/metrics/ops-summary', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const w = req.query.window as string;
+    const windowHours = w ? parseInt(w, 10) : 24;
+    if (isNaN(windowHours) || windowHours < 1 || windowHours > 720) {
+      return res.status(400).json({ error: 'window must be between 1 and 720 hours' });
+    }
+    const [subscriptions, renewals, activity, trials, throughput, latency, retries] =
+      await Promise.all([
+        monitoringService.getSubscriptionMetrics(),
+        monitoringService.getRenewalMetrics(),
+        monitoringService.getAgentActivity(),
+        monitoringService.getTrialMetrics(),
+        monitoringService.getThroughputMetrics(windowHours),
+        monitoringService.getLatencyMetrics(windowHours),
+        monitoringService.getRetryMetrics(windowHours),
+      ]);
+    res.json({
+      generated_at: new Date().toISOString(),
+      window_hours: windowHours,
+      subscriptions,
+      renewals,
+      activity,
+      trials,
+      throughput,
+      latency,
+      retries,
+      db_pool: monitoringService.getPoolMetrics(),
+    });
+  } catch (error) {
+    logger.error('Error fetching ops summary:', error);
+    res.status(500).json({ error: 'Failed to fetch ops summary' });
   }
 });
 

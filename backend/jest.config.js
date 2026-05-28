@@ -15,7 +15,6 @@ module.exports = {
     globals: {
         'ts-jest': {
             diagnostics: false,
-            isolatedModules: true,
             tsconfig: {
                 target: 'ES2022',
                 module: 'commonjs',

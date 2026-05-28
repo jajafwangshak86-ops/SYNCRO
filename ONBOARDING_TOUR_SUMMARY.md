@@ -19,8 +19,9 @@
 - **Library**: `react-joyride-react-19@2.9.2` (React 19 compatible)
 - **Components**: `OnboardingTourEnhanced` with `useOnboardingTourEnhanced` hook
 - **Targeting**: Uses `data-tour` attributes on UI elements
-- **Persistence**: localStorage to prevent re-showing completed tours
-- **Restart**: Available in Settings page under "Onboarding & Help"
+- **Persistence**: localStorage to prevent re-showing completed tours, and tracking step index for partial completion persistence.
+- **Restart**: Available in Settings page under "Onboarding & Help" and via a dedicated "Tour" button in the Dashboard top bar.
+- **Analytics**: Basic event tracking simulation for tour completions and skips.
 
 #### Data Tour Attributes
 ```typescript
@@ -39,9 +40,10 @@
 - ✅ Toast notifications on completion/skip
 
 ### Files Modified
-- `components/onboarding-tour-enhanced.tsx` - Main tour component
+- `components/onboarding-tour-enhanced.tsx` - Main tour component (added stepIndex persistence and tracking)
 - `components/app/app-client.tsx` - Tour integration
 - `components/pages/settings.tsx` - Restart functionality
+- `components/pages/dashboard.tsx` - Restart functionality via Tour button
 - `components/layout/header.tsx` - Add subscription data-tour attribute
 - `components/layout/sidebar.tsx` - Navigation data-tour attributes
 - `package.json` - React 19 compatible joyride package

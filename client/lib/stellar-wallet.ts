@@ -1,3 +1,5 @@
+import { getBlockchainFlags } from '../../shared/blockchain-flags';
+
 type WalletInfo = {
   publicKey: string;
   network: 'testnet' | 'mainnet';
@@ -18,6 +20,16 @@ class StellarWalletService {
 
   async connect(network: 'testnet' | 'mainnet' = 'testnet'): Promise<WalletInfo> {
     if (typeof window === 'undefined') throw new Error('Wallet connection requires browser');
+
+    // Guard: testnet wallet connections are not permitted in production unless
+    // NEXT_PUBLIC_ENABLE_TESTNET_ACTIONS=true is explicitly set.
+    const flags = getBlockchainFlags();
+    if (network === 'testnet' && flags.isProduction && !flags.testnetActionsEnabled) {
+      throw new Error(
+        '[wallet] Connecting to testnet is not permitted in production. ' +
+          'Set NEXT_PUBLIC_ENABLE_TESTNET_ACTIONS=true to allow this (non-mainnet only).',
+      );
+    }
 
     const freighter = (window as any).freighter;
     if (!freighter) throw new Error('Freighter wallet not installed');

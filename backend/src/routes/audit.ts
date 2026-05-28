@@ -1,6 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { auditService, AuditEntry } from '../services/audit-service';
 import { adminAuth } from '../middleware/admin';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { validate } from '../middleware/validate';
 import logger from '../config/logger';
 import { auditBatchSchema, auditQuerySchema } from '../schemas/audit';
@@ -9,13 +11,22 @@ const router: Router = Router();
 
 /**
  * POST /api/audit
- * Submit a batch of audit events
+ * Submit a batch of audit events (authenticated users only)
  */
-router.post('/', validate(auditBatchSchema), async (req: Request, res: Response) => {
+router.post(
+  '/',
+  authenticate,
+  requireRole('owner', 'admin', 'member', 'viewer'),
+  validate(auditBatchSchema),
+  async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const enrichedEvents = req.body.events.map((event: any) => ({
-      ...event,
-      ipAddress: req.ip || req.connection.remoteAddress,
+    const enrichedEvents = req.body.events.map((event: Record<string, unknown>): AuditEntry => ({
+      userId: req.user!.id,
+      action: event.action as string,
+      resourceType: (event.resource_type ?? event.resourceType) as string,
+      resourceId: (event.resource_id ?? event.resourceId) as string | undefined,
+      metadata: event.metadata as Record<string, unknown> | undefined,
+      ipAddress: req.ip || req.socket.remoteAddress,
       userAgent: req.get('user-agent') || undefined,
     }));
 
@@ -46,7 +57,8 @@ router.post('/', validate(auditBatchSchema), async (req: Request, res: Response)
       message: error instanceof Error ? error.message : 'Unknown error',
     });
   }
-});
+},
+);
 
 /**
  * GET /api/audit

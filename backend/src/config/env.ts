@@ -34,6 +34,17 @@ const envSchema = z.object({
   STELLAR_SECRET_KEY: z.string().optional(),
   STELLAR_NETWORK_PASSPHRASE: z.string().optional(),
 
+  // Blockchain feature flags (Issue #84)
+  // Active Stellar network: "testnet" | "mainnet" | "futurenet"
+  // Production deployments MUST set this to "mainnet".
+  STELLAR_NETWORK: z.enum(['testnet', 'mainnet', 'futurenet']).default('testnet'),
+  // Master switch for on-chain writes. Set to "false" to disable blockchain
+  // writes and fall back to database-only logging.
+  ENABLE_BLOCKCHAIN: z.string().default('true'),
+  // Allow testnet-only actions (faucet, friendbot, testnet contract calls).
+  // MUST NOT be set to "true" in production / mainnet environments.
+  ENABLE_TESTNET_ACTIONS: z.string().default('false'),
+
   // Payment providers (optional)
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_WEBHOOK_SECRET: z.string().optional(),
@@ -64,6 +75,7 @@ const envSchema = z.object({
 
   // Telegram (optional)
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  TELEGRAM_WEBHOOK_SECRET: z.string().optional(),
 
   // Sentry (optional)
   SENTRY_DSN: z.string().optional(),
@@ -93,7 +105,54 @@ function validateEnv() {
     process.exit(1);
   }
 
-  return result.data;
+  const data = result.data;
+
+  // ── Production safety checks for blockchain flags (Issue #84) ─────────────
+  if (data.NODE_ENV === 'production') {
+    // Reject testnet RPC URLs in production builds
+    const rpcUrl = data.SOROBAN_RPC_URL ?? data.STELLAR_NETWORK_URL ?? '';
+    if (rpcUrl.includes('testnet') || rpcUrl.includes('futurenet')) {
+      logger.error(
+        '\n❌ Production safety check failed: SOROBAN_RPC_URL / STELLAR_NETWORK_URL ' +
+          `points to a non-production endpoint ("${rpcUrl}"). ` +
+          'Set the URL to a mainnet RPC endpoint.\n',
+      );
+      process.exit(1);
+    }
+
+    // Reject testnet network passphrase in production
+    const passphrase = data.STELLAR_NETWORK_PASSPHRASE ?? '';
+    if (passphrase && passphrase.toLowerCase().includes('test')) {
+      logger.error(
+        '\n❌ Production safety check failed: STELLAR_NETWORK_PASSPHRASE ' +
+          'contains "test" — this looks like a testnet passphrase. ' +
+          'Set it to the mainnet passphrase.\n',
+      );
+      process.exit(1);
+    }
+
+    // Reject STELLAR_NETWORK=testnet in production
+    if (data.STELLAR_NETWORK === 'testnet' || data.STELLAR_NETWORK === 'futurenet') {
+      logger.error(
+        `\n❌ Production safety check failed: STELLAR_NETWORK is set to ` +
+          `"${data.STELLAR_NETWORK}" in a production environment. ` +
+          'Set STELLAR_NETWORK=mainnet for production deployments.\n',
+      );
+      process.exit(1);
+    }
+
+    // Warn loudly if ENABLE_TESTNET_ACTIONS is true in production
+    if (data.ENABLE_TESTNET_ACTIONS === 'true') {
+      logger.error(
+        '\n❌ Production safety check failed: ENABLE_TESTNET_ACTIONS=true is not ' +
+          'permitted in production. Remove this flag or set it to false.\n',
+      );
+      process.exit(1);
+    }
+  }
+  // ──────────────────────────────────────────────────────────────────────────
+
+  return data;
 }
 
 // Skip validation in test environment to avoid requiring all vars in unit tests

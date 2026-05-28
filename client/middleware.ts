@@ -72,6 +72,14 @@ export async function middleware(request: NextRequest) {
   // Generate nonce for CSP
   const nonce = crypto.randomUUID();
 
+  // Generate and set CSRF cookie if it doesn't exist
+  let csrfToken = request.cookies.get("csrf-token")?.value;
+  let didSetCsrf = false;
+  if (!csrfToken) {
+    csrfToken = crypto.randomUUID();
+    didSetCsrf = true;
+  }
+
   // Generate CSP policy (enforcing mode)
   const { headerName: cspHeaderName, policy: cspPolicy } = generateCSP(
     nonce,
@@ -80,6 +88,15 @@ export async function middleware(request: NextRequest) {
 
   // Update Supabase session and handle auth redirects
   const response = await updateSession(request);
+
+  if (didSetCsrf && csrfToken) {
+    response.cookies.set("csrf-token", csrfToken, {
+      path: "/",
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      httpOnly: false, // readable by client-side axios interceptor
+    });
+  }
 
   // Add security headers to all responses
   Object.entries(securityHeaders).forEach(([key, value]) => {

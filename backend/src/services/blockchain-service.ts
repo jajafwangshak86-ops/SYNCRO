@@ -11,6 +11,10 @@ import {
 import { rpc as SorobanRpc } from "@stellar/stellar-sdk";
 import { createClient, RedisClientType } from "redis";
 import { secretProvider } from "./secret-provider";
+import {
+  getBlockchainFlags,
+  resolveStellarNetwork,
+} from "../../../shared/blockchain-flags";
 
 export type PayloadVersion = '1.0';
 
@@ -75,14 +79,46 @@ export class BlockchainService {
 
   constructor() {
     this.contractAddress = process.env.SOROBAN_CONTRACT_ADDRESS || null;
-    this.rpcUrl =
-      process.env.SOROBAN_RPC_URL || "https://soroban-testnet.stellar.org";
+
+    const flags = getBlockchainFlags();
+    const network = resolveStellarNetwork();
+
+    // Resolve RPC URL — never silently fall back to testnet in production.
+    const configuredRpc = process.env.SOROBAN_RPC_URL;
+    if (!configuredRpc && flags.isProduction) {
+      throw new Error(
+        "[blockchain] SOROBAN_RPC_URL must be explicitly set in production. " +
+          "Refusing to fall back to the testnet RPC endpoint.",
+      );
+    }
+    this.rpcUrl = configuredRpc || "https://soroban-testnet.stellar.org";
+
+    // Resolve network passphrase — never silently use testnet passphrase in production.
+    const configuredPassphrase = process.env.STELLAR_NETWORK_PASSPHRASE;
+    if (!configuredPassphrase && flags.isProduction) {
+      throw new Error(
+        "[blockchain] STELLAR_NETWORK_PASSPHRASE must be explicitly set in production. " +
+          "Refusing to fall back to the testnet network passphrase.",
+      );
+    }
     this.networkPassphrase =
-      process.env.STELLAR_NETWORK_PASSPHRASE || Networks.TESTNET;
+      configuredPassphrase ||
+      (network === "mainnet"
+        ? Networks.PUBLIC
+        : network === "futurenet"
+          ? Networks.FUTURENET
+          : Networks.TESTNET);
 
     if (!this.contractAddress) {
       logger.warn(
         "Blockchain contract address not configured. Events will be logged to database only.",
+      );
+    }
+
+    if (!flags.blockchainEnabled) {
+      logger.warn(
+        "ENABLE_BLOCKCHAIN=false — on-chain writes are disabled. " +
+          "All events will be logged to the database only.",
       );
     }
 
@@ -471,6 +507,16 @@ export class BlockchainService {
     if (!this.contractAddress) {
       throw new Error("SOROBAN_CONTRACT_ADDRESS not configured");
     }
+
+    // Honour the ENABLE_BLOCKCHAIN master switch
+    const flags = getBlockchainFlags();
+    if (!flags.blockchainEnabled) {
+      throw new Error(
+        `[blockchain] On-chain write for "${method}" was blocked: ` +
+          "ENABLE_BLOCKCHAIN is set to false.",
+      );
+    }
+
     const rpc = new SorobanRpc.Server(this.rpcUrl);
     
     // Fetch secret from provider

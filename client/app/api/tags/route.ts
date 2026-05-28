@@ -14,7 +14,7 @@ const createTagSchema = z.object({
 
 export const GET = createApiRoute(
   async (_req, context, user) => {
-    if (!user) throw new Error("User not authenticated")
+    if (!user) throw ApiErrors.unauthorized("User not authenticated")
 
     const tags = await fetchUserTags(user.id)
     return createSuccessResponse({ tags }, HttpStatus.OK, context.requestId)
@@ -24,12 +24,12 @@ export const GET = createApiRoute(
 
 export const POST = createApiRoute(
   async (request, context, user) => {
-    if (!user) throw new Error("User not authenticated")
+    if (!user) throw ApiErrors.unauthorized("User not authenticated")
 
     const { name, color } = await validateRequestBody(request as NextRequest, createTagSchema)
     const tag = await createTag(user.id, name, color)
 
     return createSuccessResponse({ tag }, HttpStatus.CREATED, context.requestId)
   },
-  { requireAuth: true, rateLimit: RateLimiters.standard },
+  { requireAuth: true, rateLimit: RateLimiters.tagMutation },
 )

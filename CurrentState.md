@@ -106,6 +106,7 @@ SYNCRO/
 #### ✅ What's Implemented
 
 **Smart Contracts (Stellar Soroban)**
+- `subscription_registry`: Core storage and metadata management for subscriptions
 - `subscription_renewal`: Logic for handling recurring payment cycles
 - `virtual-card`: Interface for non-custodial card interaction
 - `escrow`: Secure holding of funds for pending payments

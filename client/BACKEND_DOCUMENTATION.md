@@ -166,7 +166,6 @@ All tables are defined with Row Level Security (RLS) policies:
 \`\`\`bash
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 \`\`\`
 
 #### 1.2 Execute Database Migrations
@@ -674,6 +673,7 @@ GET /api/analytics/categories       # Category breakdown
 GET  /api/integrations/gmail/auth      # OAuth redirect
 POST /api/integrations/gmail/callback  # OAuth callback
 POST /api/integrations/gmail/scan      # Scan emails
+POST /api/integrations/email/rescan    # Trigger bounded email re-scan
 
 # Microsoft 365 / Outlook
 GET  /api/integrations/outlook/auth      # OAuth redirect
@@ -694,6 +694,9 @@ PATCH /api/calendar/preferences              # Update calendar sync preferences
 # Slack
 POST /api/integrations/slack/notify    # Send notification
 \`\`\`
+
+`POST /api/integrations/email/rescan` accepts `emailAccountId`, `startDate`, and `endDate`.
+The backend enforces ownership of the account, rejects disconnected providers, and currently limits replay windows to 31 days to keep reprocessing bounded and safe. Replay jobs are persisted in `rescan_jobs` and emit audit events for request, completion, and failure outcomes.
 
 ### API Response Format
 
@@ -1181,7 +1184,6 @@ Provides a token-gated iCal feed for subscription renewals and reminder schedule
    # Supabase
    NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxx...
-   SUPABASE_SERVICE_ROLE_KEY=eyJxxx...
    
    # Stripe (if using payments)
    STRIPE_SECRET_KEY=sk_live_xxx
@@ -1251,7 +1253,6 @@ Provides a token-gated iCal feed for subscription renewals and reminder schedule
 # Required
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
 
 # Stripe (if using payments)
 STRIPE_SECRET_KEY=

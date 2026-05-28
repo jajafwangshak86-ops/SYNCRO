@@ -9,7 +9,17 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { z } from "zod"
-import { RateLimiters } from "@/lib/api/index"
+import { ApiErrors, RateLimiters, createErrorResponse, validateCsrfToken } from "@/lib/api/index"
+import { ApiException } from "@/lib/api/errors"
+import { applyRateLimitHeaders, type RateLimitHeaders } from "@/lib/api/rate-limit"
+
+function importJsonResponse(
+  body: unknown,
+  status: number,
+  rateLimitHeaders: RateLimitHeaders,
+) {
+  return applyRateLimitHeaders(NextResponse.json(body, { status }), rateLimitHeaders)
+}
 
 // ─── Validation (mirrors backend csv-import-service) ─────────────────────
 
@@ -20,12 +30,17 @@ const CSV_TEMPLATE =
   "Netflix,17.99,USD,monthly,2025-04-15,Streaming,https://netflix.com\n" +
   "Adobe Creative Cloud,54.99,USD,monthly,2025-04-22,Design,https://adobe.com\n"
 
-function parseCSV(text: string): Record<string, string>[] {
+function parseCSV(text: string): { headers: string[]; records: Record<string, string>[] } {
   const lines = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n")
-  if (lines.length < 2) return []
+  if (lines.length < 1) return { headers: [], records: [] }
 
-  const headers = lines[0].split(",").map((h) => h.replace(/^\uFEFF/, "").trim().toLowerCase())
-  const rows: Record<string, string>[] = []
+  const headers = lines[0]
+    .split(",")
+    .map((h) => h.replace(/^\uFEFF/, "").trim())
+  
+  if (lines.length < 2) return { headers, records: [] }
+
+  const records: Record<string, string>[] = []
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i].trim()
@@ -35,17 +50,16 @@ function parseCSV(text: string): Record<string, string>[] {
     headers.forEach((h, idx) => {
       row[h] = (values[idx] ?? "").trim()
     })
-    rows.push(row)
+    records.push(row)
   }
 
-  return rows
+  return { headers, records }
 }
 
 const rowSchema = z.object({
   name: z.string().min(1, "Name is required").max(100),
   price: z
-    .string()
-    .transform((v) => parseFloat(v.replace(/[$,]/g, "")))
+    .preprocess((v) => (typeof v === "string" ? v.replace(/[$,]/g, "") : v), z.coerce.number())
     .refine((v) => !isNaN(v) && v >= 0, "Price must be a non-negative number"),
   currency: z.string().default("USD"),
   billing_cycle: z
@@ -100,12 +114,19 @@ export async function GET(request: NextRequest) {
 // ─── Import ───────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
+  const requestId = crypto.randomUUID()
+  let rateLimitHeaders: RateLimitHeaders = {}
+
   try {
-    // Apply strict rate limiting for bulk imports (5 imports per hour)
-    RateLimiters.strict(request)
+    // Enforce CSRF protection
+    validateCsrfToken(request)
+
+    rateLimitHeaders = RateLimiters.import(request)
 
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
 
     const isCommit = request.nextUrl.searchParams.get("commit") === "true"
@@ -115,30 +136,51 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const file = formData.get("file") as File | null
     if (!file) {
-      return NextResponse.json({ success: false, error: "No CSV file uploaded" }, { status: 400 })
+      return importJsonResponse({ success: false, error: "No CSV file uploaded" }, 400, rateLimitHeaders)
     }
     if (!file.name.endsWith(".csv")) {
-      return NextResponse.json({ success: false, error: "Only CSV files are accepted" }, { status: 400 })
+      return importJsonResponse({ success: false, error: "Only CSV files are accepted" }, 400, rateLimitHeaders)
     }
+
+    const mappingStr = formData.get("mappings") as string | null
+    const mappings = mappingStr ? JSON.parse(mappingStr) : null
 
     const text = await file.text()
-    const records = parseCSV(text)
+    const { headers, records } = parseCSV(text)
+
+    if (headers.length === 0) {
+      return NextResponse.json({ success: false, error: "The CSV file is empty or has no data." }, { status: 400 })
+    }
+
+    // If no mappings provided and it's not a commit, return headers for mapping step
+    if (!mappings && !isCommit) {
+      return NextResponse.json({
+        success: true,
+        data: {
+          headers,
+          sampleRows: records.slice(0, 3),
+        },
+      })
+    }
 
     if (records.length === 0) {
-      return NextResponse.json({ success: false, error: "The CSV file is empty or has no data rows." }, { status: 400 })
+      return importJsonResponse(
+        { success: false, error: "The CSV file is empty or has no data rows." },
+        400,
+        rateLimitHeaders,
+      )
     }
+
     if (records.length > 500) {
-      return NextResponse.json(
+      return importJsonResponse(
         { success: false, error: `File contains ${records.length} rows — limit is 500 per import.` },
-        { status: 400 },
+        400,
+        rateLimitHeaders,
       )
     }
 
     // Fetch existing names for duplicate detection
-    const { data: existing } = await supabase
-      .from("subscriptions")
-      .select("id, name")
-      .eq("user_id", user.id)
+    const { data: existing } = await supabase.from("subscriptions").select("id, name").eq("user_id", user.id)
 
     const existingNames = new Map<string, string>(
       (existing ?? []).map((s: { id: string; name: string }) => [s.name.toLowerCase(), s.id]),
@@ -157,7 +199,26 @@ export async function POST(request: NextRequest) {
 
     const rows: RowResult[] = records.map((raw, i) => {
       const rowNum = i + 2
-      const result = rowSchema.safeParse(raw)
+      
+      // Apply mappings if present
+      let dataToValidate: any = raw
+      if (mappings) {
+        dataToValidate = {}
+        Object.entries(mappings).forEach(([internalKey, csvHeader]) => {
+          if (csvHeader) {
+            dataToValidate[internalKey] = raw[csvHeader as string]
+          }
+        })
+      } else {
+        // Fallback to exact header match (lowercased)
+        const normalized: any = {}
+        Object.entries(raw).forEach(([k, v]) => {
+          normalized[k.toLowerCase().trim()] = v
+        })
+        dataToValidate = normalized
+      }
+
+      const result = rowSchema.safeParse(dataToValidate)
 
       if (!result.success) {
         const msg = result.error.errors.map((e) => `${e.path.join(".")}: ${e.message}`).join("; ")
@@ -181,7 +242,10 @@ export async function POST(request: NextRequest) {
     }
 
     if (!isCommit) {
-      return NextResponse.json({ success: true, data: { preview } })
+      return applyRateLimitHeaders(
+        NextResponse.json({ success: true, data: { preview } }),
+        rateLimitHeaders,
+      )
     }
 
     // Commit
@@ -205,7 +269,7 @@ export async function POST(request: NextRequest) {
 
     if (toInsert.length > 0) {
       const { error } = await supabase.from("subscriptions").insert(toInsert)
-      if (error) throw new Error(`Import failed: ${error.message}`)
+      if (error) throw ApiErrors.internalError(`Import failed: ${error.message}`)
     }
 
     const result = {
@@ -214,8 +278,14 @@ export async function POST(request: NextRequest) {
       errors: preview.errorCount,
     }
 
-    return NextResponse.json({ success: true, data: result })
+    return applyRateLimitHeaders(
+      NextResponse.json({ success: true, data: result }),
+      rateLimitHeaders,
+    )
   } catch (err) {
+    if (err instanceof ApiException) {
+      return createErrorResponse(err, requestId)
+    }
     const message = err instanceof Error ? err.message : "Import failed"
     return NextResponse.json({ success: false, error: message }, { status: 400 })
   }

@@ -5,6 +5,7 @@ import logger from '../config/logger';
 import { setRequestUserId } from './requestContext';
 import * as Sentry from '@sentry/node';
 import { roleService } from '../services/role-service';
+import { auditApiKeyEvent } from '../services/audit-service';
 
 export type UserRole = 'owner' | 'admin' | 'member' | 'viewer';
 
@@ -72,6 +73,11 @@ async function authenticateWithApiKey(
     .single();
 
   if (error || !keyRecord) {
+    await auditApiKeyEvent('api_key.auth_failed', undefined, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string | undefined,
+      reason: 'Invalid or revoked API key',
+    });
     res.status(401).json({ error: 'Invalid API key' });
     return true;
   }

@@ -37,7 +37,7 @@ export const POST = createApiRoute(
 
     // Check if payment is already refunded
     if (payment.status === "refunded") {
-      throw ApiErrors.badRequest("Payment has already been refunded")
+      throw ApiErrors.validationError("Payment has already been refunded")
     }
 
     const paymentService = new PaymentService({
@@ -61,6 +61,7 @@ export const POST = createApiRoute(
   },
   {
     requireAuth: true,
-    rateLimit: RateLimiters.strict,
+    rateLimit: RateLimiters.payment,
+    idempotent: true,
   }
 )

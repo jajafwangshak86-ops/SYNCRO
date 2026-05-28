@@ -4,7 +4,7 @@
  */
 
 import { type NextRequest } from "next/server"
-import { createApiRoute, createSuccessResponse, ApiErrors, RateLimiters } from "@/lib/api/index"
+import { createApiRoute, createSuccessResponse, ApiErrors, RateLimiters, validateRequestBody } from "@/lib/api/index"
 import { HttpStatus } from "@/lib/api/types"
 import { PaymentService } from "@/lib/payment-service"
 import { z } from "zod"
@@ -20,8 +20,7 @@ export const POST = createApiRoute(
             throw ApiErrors.unauthorized("User not authenticated")
         }
 
-        const body = await request.json()
-        const validated = captureSchema.parse(body)
+        const validated = await validateRequestBody(request, captureSchema)
 
         const paymentService = new PaymentService({
             provider: "paypal",
@@ -59,6 +58,7 @@ export const POST = createApiRoute(
     },
     {
         requireAuth: true,
-        rateLimit: RateLimiters.strict,
+        rateLimit: RateLimiters.payment,
+        idempotent: true,
     }
 )

@@ -11,6 +11,10 @@ const { createClient } = require('@supabase/supabase-js');
 
 // Test configuration
 const SUPABASE_URL = process.env.SUPABASE_URL || 'http://localhost:54321';
+// Official Supabase demo token for local development
+// This token only works with local Supabase instances (http://localhost:54321)
+// Issuer: supabase-demo, Role: service_role, Expires: 2032-12-31
+// NOT a production secret - safe to commit
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU';
 

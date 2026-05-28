@@ -3,16 +3,44 @@
  * Centralized feature flag management for the application
  */
 
+import {
+  getBlockchainFlags,
+  type BlockchainFlags,
+} from '../../shared/blockchain-flags';
+
 export interface FeatureFlags {
     paypalEnabled: boolean
     mockPaymentsEnabled: boolean
     stripeEnabled: boolean
+    /** Whether testnet-only blockchain actions are permitted. */
+    testnetActionsEnabled: boolean
+    /** Master switch: whether on-chain writes are enabled. */
+    blockchainEnabled: boolean
+}
+
+/**
+ * Returns true only when running in a non-production environment OR when
+ * ENABLE_MOCK_PAYMENTS is explicitly set to 'true'.
+ *
+ * Production builds (NODE_ENV === 'production') CANNOT enable mock mode
+ * via ENABLE_MOCK_PAYMENTS alone — the env check is intentionally ordered
+ * so that NODE_ENV=production always wins.
+ */
+function isMockPaymentsAllowed(): boolean {
+    if (process.env.NODE_ENV === 'production') return false;
+    return (
+        process.env.NODE_ENV === 'development' ||
+        process.env.NODE_ENV === 'test' ||
+        process.env.ENABLE_MOCK_PAYMENTS === 'true'
+    );
 }
 
 /**
  * Get feature flags from environment variables
  */
 export function getFeatureFlags(): FeatureFlags {
+    const blockchain: BlockchainFlags = getBlockchainFlags();
+
     return {
         // PayPal is enabled if credentials are configured
         paypalEnabled: !!(
@@ -20,13 +48,15 @@ export function getFeatureFlags(): FeatureFlags {
             process.env.PAYPAL_CLIENT_SECRET
         ),
 
-        // Mock payments only enabled in development or if explicitly enabled
-        mockPaymentsEnabled:
-            process.env.NODE_ENV === 'development' ||
-            process.env.ENABLE_MOCK_PAYMENTS === 'true',
+    // Mock payments only enabled in development/test or if explicitly enabled — never in production
+        mockPaymentsEnabled: isMockPaymentsAllowed(),
 
         // Stripe is enabled if API key is configured
         stripeEnabled: !!process.env.STRIPE_SECRET_KEY,
+
+        // Blockchain flags (Issue #84)
+        testnetActionsEnabled: blockchain.testnetActionsEnabled,
+        blockchainEnabled: blockchain.blockchainEnabled,
     }
 }
 
@@ -82,4 +112,21 @@ export function getDefaultPaymentProvider(): 'stripe' | 'paypal' | 'mock' {
     if (flags.mockPaymentsEnabled) return 'mock'
 
     throw new Error('No payment provider is configured')
+}
+
+/**
+ * Check whether testnet-only blockchain actions are allowed.
+ *
+ * Use this before rendering testnet-specific UI (faucet links, friendbot
+ * buttons, testnet contract call forms, etc.).
+ */
+export function isTestnetActionAllowed(): boolean {
+    return getFeatureFlags().testnetActionsEnabled
+}
+
+/**
+ * Check whether on-chain writes are enabled.
+ */
+export function isBlockchainEnabled(): boolean {
+    return getFeatureFlags().blockchainEnabled
 }

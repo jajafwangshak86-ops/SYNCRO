@@ -1,5 +1,44 @@
 import { supabase } from '../config/database';
 import logger from '../config/logger';
+import { getRequestId } from '../middleware/requestContext';
+
+// ─── API Key lifecycle event types ───────────────────────────────────────────
+export type ApiKeyEvent = 'api_key.created' | 'api_key.rotated' | 'api_key.revoked' | 'api_key.auth_failed';
+
+export interface ApiKeyAuditMeta {
+  keyId?: string;
+  keyName?: string;
+  scopes?: string[];
+  ipAddress?: string;
+  userAgent?: string;
+  reason?: string;
+}
+
+/**
+ * Log an API key lifecycle event.
+ * Actor = the authenticated user performing the action (or undefined for failed auth).
+ * Target = the key being acted upon.
+ */
+export async function auditApiKeyEvent(
+  event: ApiKeyEvent,
+  actorId: string | undefined,
+  meta: ApiKeyAuditMeta,
+): Promise<void> {
+  await auditService.insertEntry({
+    userId: actorId,
+    action: event,
+    resourceType: 'api_key',
+    resourceId: meta.keyId,
+    metadata: {
+      keyName: meta.keyName,
+      scopes: meta.scopes,
+      correlationId: getRequestId(),
+      reason: meta.reason,
+    },
+    ipAddress: meta.ipAddress,
+    userAgent: meta.userAgent,
+  });
+}
 
 export interface AuditEntry {
   userId?: string;
@@ -273,3 +312,6 @@ class AuditService {
 }
 
 export const auditService = new AuditService();
+
+// Re-export for convenience
+export { AuditService };

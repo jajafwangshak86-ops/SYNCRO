@@ -10,10 +10,10 @@ import { z } from 'zod'
  * Uses partial() to allow missing optional vars, but validates required ones
  */
 const envSchema = z.object({
-  // Supabase (required)
+  // Supabase — anon key only; service-role key intentionally excluded from client
+  // to prevent accidental privilege escalation. Backend uses SERVICE_ROLE_KEY directly.
   NEXT_PUBLIC_SUPABASE_URL: z.string().url('Invalid Supabase URL').optional(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(1, 'Supabase anon key required').optional(),
-  SUPABASE_SERVICE_ROLE_KEY: z.string().min(1, 'Supabase service role key required').optional(),
 
   // API Configuration
   NEXT_PUBLIC_API_BASE: z.string().url('Invalid API base URL').optional(),
@@ -22,6 +22,12 @@ const envSchema = z.object({
   // Rate Limiting
   RATE_LIMIT_ENABLED: z.string().transform((val) => val === 'true').default('true'),
   RATE_LIMIT_REDIS_URL: z.string().url('Invalid Redis URL').optional(),
+  RATE_LIMIT_IMPORT_MAX: z.string().optional(),
+  RATE_LIMIT_IMPORT_WINDOW_MINUTES: z.string().optional(),
+  RATE_LIMIT_PAYMENT_MAX: z.string().optional(),
+  RATE_LIMIT_PAYMENT_WINDOW_MINUTES: z.string().optional(),
+  RATE_LIMIT_TAG_MUTATION_MAX: z.string().optional(),
+  RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES: z.string().optional(),
 
   // External Services
   STRIPE_SECRET_KEY: z.string().optional(),
@@ -62,11 +68,17 @@ export function getEnv(): Env {
     validatedEnv = envSchema.parse({
       NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
       NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-      SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
       NEXT_PUBLIC_API_BASE: process.env.NEXT_PUBLIC_API_BASE,
       API_SECRET_KEY: process.env.API_SECRET_KEY,
       RATE_LIMIT_ENABLED: process.env.RATE_LIMIT_ENABLED,
       RATE_LIMIT_REDIS_URL: process.env.RATE_LIMIT_REDIS_URL,
+      RATE_LIMIT_IMPORT_MAX: process.env.RATE_LIMIT_IMPORT_MAX,
+      RATE_LIMIT_IMPORT_WINDOW_MINUTES: process.env.RATE_LIMIT_IMPORT_WINDOW_MINUTES,
+      RATE_LIMIT_PAYMENT_MAX: process.env.RATE_LIMIT_PAYMENT_MAX,
+      RATE_LIMIT_PAYMENT_WINDOW_MINUTES: process.env.RATE_LIMIT_PAYMENT_WINDOW_MINUTES,
+      RATE_LIMIT_TAG_MUTATION_MAX: process.env.RATE_LIMIT_TAG_MUTATION_MAX,
+      RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES:
+        process.env.RATE_LIMIT_TAG_MUTATION_WINDOW_MINUTES,
       STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY,
       STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET,
       PAYSTACK_SECRET_KEY: process.env.PAYSTACK_SECRET_KEY,

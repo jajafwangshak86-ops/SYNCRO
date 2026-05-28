@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import Stripe from "stripe"
 import { createClient } from "@/lib/supabase/server"
 import { getStripeInstance } from "@/lib/stripe-config"
+import { ApiErrors } from "@/lib/api/index"
 
 export async function POST(request: NextRequest) {
   const stripe = getStripeInstance()
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     if (!signature || !webhookSecret) {
-      throw new Error("Missing stripe-signature or webhook secret")
+      throw ApiErrors.validationError("Missing stripe-signature or webhook secret")
     }
     event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
   } catch (err) {
@@ -27,46 +28,78 @@ export async function POST(request: NextRequest) {
 
   const supabase = await createClient()
 
-  // Handle the event
-  switch (event.type) {
-    case "payment_intent.succeeded":
-      const paymentIntentSucceeded = event.data.object as Stripe.PaymentIntent
-      console.log(`PaymentIntent for ${paymentIntentSucceeded.amount} was successful!`)
-      
-      // Update payment status in database
-      await supabase
-        .from("payments")
-        .update({ status: "succeeded" })
-        .eq("transaction_id", paymentIntentSucceeded.id)
-      
-      // Here you would also update the user's subscription record
-      // e.g., extend active_until, update plan_name, etc.
-      if (paymentIntentSucceeded.metadata?.userId) {
-        await supabase
-          .from("profiles")
-          .update({ 
-            // example: update a subscription_status field if it exists
-            subscription_tier: paymentIntentSucceeded.metadata.planName 
-          })
-          .eq("id", paymentIntentSucceeded.metadata.userId)
+  try {
+    // Handle the event
+    switch (event.type) {
+      case "payment_intent.succeeded": {
+        const paymentIntentSucceeded = event.data.object as Stripe.PaymentIntent
+        console.log(`PaymentIntent for ${paymentIntentSucceeded.amount} was successful!`)
+
+        // Update payment status in database
+        const { error: paymentUpdateError } = await supabase
+          .from("payments")
+          .update({ status: "succeeded" })
+          .eq("transaction_id", paymentIntentSucceeded.id)
+
+        if (paymentUpdateError) {
+          console.error("[Webhook] Failed to update payment status:", paymentUpdateError)
+          return NextResponse.json(
+            { error: "Database error: payment update failed" },
+            { status: 500 }
+          )
+        }
+
+        // Update user profile if metadata is present
+        if (paymentIntentSucceeded.metadata?.userId) {
+          const { error: profileUpdateError } = await supabase
+            .from("profiles")
+            .update({
+              subscription_tier: paymentIntentSucceeded.metadata.planName
+            })
+            .eq("id", paymentIntentSucceeded.metadata.userId)
+
+          if (profileUpdateError) {
+            console.error("[Webhook] Failed to update user profile:", profileUpdateError)
+            return NextResponse.json(
+              { error: "Database error: profile update failed" },
+              { status: 500 }
+            )
+          }
+        }
+        break
       }
-      break;
 
-    case "payment_intent.payment_failed":
-      const paymentIntentFailed = event.data.object as Stripe.PaymentIntent
-      console.log(`PaymentIntent for ${paymentIntentFailed.amount} failed.`)
-      
-      await supabase
-        .from("payments")
-        .update({ status: "failed" })
-        .eq("transaction_id", paymentIntentFailed.id)
-      break;
+      case "payment_intent.payment_failed": {
+        const paymentIntentFailed = event.data.object as Stripe.PaymentIntent
+        console.log(`PaymentIntent for ${paymentIntentFailed.amount} failed.`)
 
-    default:
-      console.log(`Unhandled event type ${event.type}`)
+        const { error: failUpdateError } = await supabase
+          .from("payments")
+          .update({ status: "failed" })
+          .eq("transaction_id", paymentIntentFailed.id)
+
+        if (failUpdateError) {
+          console.error("[Webhook] Failed to update payment failure status:", failUpdateError)
+          return NextResponse.json(
+            { error: "Database error: payment failure update failed" },
+            { status: 500 }
+          )
+        }
+        break
+      }
+
+      default:
+        console.log(`Unhandled event type ${event.type}`)
+    }
+
+    return NextResponse.json({ received: true })
+  } catch (error) {
+    console.error("[Webhook] Unexpected error processing event:", error)
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
   }
-
-  return NextResponse.json({ received: true })
 }
 
 export const config = {

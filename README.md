@@ -132,3 +132,16 @@ Ensuring the subscription is covered
 Maintaining card balance
 
 Synchro only tracks subscriptions, sends reminders, and provides guidance to make subscription management easier and safer.
+
+## Project Structure & Ownership
+
+For detailed information about directory ownership, responsibilities, and triage guidance, see:
+
+- [Directory Ownership Matrix](./DIRECTORY_OWNERSHIP_MATRIX.md) - Complete ownership information
+- [Ownership Quick Reference](./OWNERSHIP_QUICK_REFERENCE.md) - Quick lookup guide
+- [CODEOWNERS](./.github/CODEOWNERS) - GitHub enforcement
+- [Code Review Process](./docs/code-review-process.md) - Review procedures
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidelines and development setup instructions.

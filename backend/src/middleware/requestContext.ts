@@ -66,3 +66,18 @@ export function setRequestUserId(userId: string): void {
     store.userId = userId;
   }
 }
+
+/**
+ * Run an async job (cron, queue worker, etc.) with a fresh correlation ID
+ * so all log entries and audit events produced inside `fn` carry the same ID.
+ *
+ * Usage:
+ *   await runWithCorrelationId('cron:reminder', async () => { ... });
+ */
+export function runWithCorrelationId<T>(
+  label: string,
+  fn: (correlationId: string) => Promise<T>,
+): Promise<T> {
+  const correlationId = `${label}:${uuidv4()}`;
+  return requestContextStorage.run({ requestId: correlationId }, () => fn(correlationId));
+}

@@ -9,6 +9,7 @@ import {
   WebhookCreateInput, 
   WebhookUpdateInput 
 } from '../types/webhook';
+import { webhookDeadLetterService } from './webhook-dead-letter-service';
 
 export class WebhookService {
   private readonly MAX_RETRIES = 5;
@@ -281,7 +282,17 @@ export class WebhookService {
     let nextStatus: 'failed' | 'retrying' = 'failed';
     let scheduledAt = null;
 
-    if (retryCount <= this.MAX_RETRIES) {
+    // Check if we've exhausted retries
+    if (retryCount > this.MAX_RETRIES) {
+      // Move to dead-letter
+      logger.warn(`Delivery ${deliveryId} exhausted retries (${retryCount}), moving to dead-letter`);
+      const errorReason = body || `HTTP ${code || 'network error'}`;
+      await webhookDeadLetterService.moveToDeadLetter(
+        deliveryId,
+        `Exhausted ${this.MAX_RETRIES} retries`,
+        errorReason
+      );
+    } else if (retryCount <= this.MAX_RETRIES) {
       nextStatus = 'retrying';
       // Exponential backoff: 30s, 5m, 30m, 2h, 6h
       const delays = [30, 300, 1800, 7200, 21600];
@@ -298,6 +309,7 @@ export class WebhookService {
         retry_count: retryCount,
         scheduled_at: scheduledAt || new Date().toISOString(),
         updated_at: new Date().toISOString(),
+        last_error_message: body || `HTTP ${code || 'network error'}`,
       })
       .eq('id', deliveryId)
       .select()
@@ -385,6 +397,67 @@ export class WebhookService {
         logger.error(`Retry delivery failed for ${delivery.id}:`, err);
       });
     }
+  }
+
+  /**
+   * Get dead-letter deliveries for a webhook
+   */
+  async getDeadLetterDeliveries(userId: string, webhookId: string) {
+    return webhookDeadLetterService.getDeadLetterDeliveries(userId, webhookId);
+  }
+
+  /**
+   * Get all dead-letter deliveries for a user
+   */
+  async getAllUserDeadLetters(userId: string) {
+    return webhookDeadLetterService.getAllUserDeadLetters(userId);
+  }
+
+  /**
+   * Create a replay request for a dead-letter delivery
+   */
+  async createDeadLetterReplay(userId: string, deliveryId: string, idempotencyKey?: string) {
+    return webhookDeadLetterService.createReplayRequest(deliveryId, userId, idempotencyKey);
+  }
+
+  /**
+   * Get replay history for a dead-letter delivery
+   */
+  async getDeadLetterReplayHistory(userId: string, deliveryId: string) {
+    return webhookDeadLetterService.getReplayHistory(userId, deliveryId);
+  }
+
+  /**
+   * Execute a replay for a dead-letter delivery
+   */
+  async executeDeadLetterReplay(userId: string, replayId: string): Promise<any> {
+    // Fetch the replay
+    const { data: replay, error: replayError } = await supabase
+      .from('webhook_dead_letter_replays')
+      .select('*, webhook_deliveries!inner(*, webhooks!inner(*))')
+      .eq('id', replayId)
+      .single();
+
+    if (replayError || !replay) {
+      throw new Error('Replay request not found');
+    }
+
+    const delivery = replay.webhook_deliveries;
+    const webhook = delivery.webhooks;
+
+    // Verify ownership
+    if (webhook.user_id !== userId) {
+      throw new Error('Access denied');
+    }
+
+    return webhookDeadLetterService.executeReplay(replayId, webhook, delivery);
+  }
+
+  /**
+   * Get dead-letter statistics for a user
+   */
+  async getDeadLetterStats(userId: string) {
+    return webhookDeadLetterService.getDeadLetterStats(userId);
   }
 }
 

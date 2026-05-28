@@ -123,6 +123,9 @@ export interface UserPreferences {
   /** IANA timezone identifier used to interpret quiet_hours_start/end. */
   quiet_hours_timezone: string;
   critical_alerts_only: boolean;
+  currency: string;
+  timezone: string;
+  locale: string;
   calendar_sync_enabled: boolean;
   calendar_export_reminders: boolean;
   /** ISO-8601 UTC string. */
@@ -137,4 +140,3 @@ export interface ReminderSettings {
 }
 
 export type PartialUserPreferences = Partial<Omit<UserPreferences, 'user_id' | 'updated_at'>>;
-

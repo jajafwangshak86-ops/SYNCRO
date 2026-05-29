@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { z } from 'zod';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { giftCardLedgerService } from '../services/gift-card-ledger-service';
-import { validateRequest } from '../utils/validation';
+import { validate } from '../middleware/validate';
 import { BadRequestError } from '../errors';
 import { validateLimit } from '../utils/pagination';
 
@@ -21,12 +21,14 @@ const deductSchema = z.object({
 });
 
 /** GET /api/gift-card-ledger/balance */
+// VALIDATION_BYPASS: No request body or params needed
 router.get('/balance', async (req: AuthenticatedRequest, res: Response) => {
   const balance = await giftCardLedgerService.getBalance(req.user!.id);
   res.json({ success: true, balance, formatted: `$${balance.toFixed(2)} remaining` });
 });
 
 /** GET /api/gift-card-ledger/history */
+// VALIDATION_BYPASS: Simple integer parsing
 router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
   try {
     const limit = validateLimit(req.query.limit, 100, 50);
@@ -41,15 +43,15 @@ router.get('/history', async (req: AuthenticatedRequest, res: Response) => {
 });
 
 /** POST /api/gift-card-ledger/top-up */
-router.post('/top-up', async (req: AuthenticatedRequest, res: Response) => {
-  const { amount, description } = validateRequest(topUpSchema, req.body);
+router.post('/top-up', validate(topUpSchema), async (req: AuthenticatedRequest, res: Response) => {
+  const { amount, description } = req.body;
   const entry = await giftCardLedgerService.topUp(req.user!.id, amount, description);
   res.status(201).json({ success: true, data: entry });
 });
 
 /** POST /api/gift-card-ledger/deduct */
-router.post('/deduct', async (req: AuthenticatedRequest, res: Response) => {
-  const { subscriptionId, amount, description } = validateRequest(deductSchema, req.body);
+router.post('/deduct', validate(deductSchema), async (req: AuthenticatedRequest, res: Response) => {
+  const { subscriptionId, amount, description } = req.body;
   try {
     const entry = await giftCardLedgerService.deduct(req.user!.id, subscriptionId, amount, description);
     res.status(201).json({ success: true, data: entry });

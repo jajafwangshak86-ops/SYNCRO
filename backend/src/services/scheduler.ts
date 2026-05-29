@@ -10,6 +10,7 @@ import { complianceService } from './compliance-service';
 import { supabase } from '../config/database';
 import { suggestionService } from './suggestion-service';
 import { idempotencyService } from './idempotency';
+import { subscriptionService } from './subscription-service';
 
 export class SchedulerService {
   private jobs: cron.ScheduledTask[] = [];
@@ -142,6 +143,19 @@ export class SchedulerService {
           logger.info(`Hard delete job completed: ${processed} accounts processed`);
         } catch (error) {
           logger.error('Error in hard delete job:', error);
+        }
+      }),
+    );
+
+    // ── Daily at 3:30 AM UTC: soft-delete retention cleanup ──────────────
+    this.jobs.push(
+      cron.schedule('30 3 * * *', async () => {
+        logger.info('Running soft-delete retention cleanup');
+        try {
+          const { deletedCount } = await subscriptionService.purgeDeletedSubscriptions(30);
+          logger.info(`Retention cleanup completed: purged ${deletedCount} subscriptions`);
+        } catch (error) {
+          logger.error('Error in soft-delete retention cleanup:', error);
         }
       }),
     );

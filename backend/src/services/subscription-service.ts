@@ -98,7 +98,7 @@ export class SubscriptionService {
         }
 
         // Trigger budget check (don't let it block response)
-        analyticsService.checkBudgetThreshold(userId).catch(e => 
+        analyticsService.checkBudgetThreshold(userId).catch(e =>
           logger.error('Background budget check failed:', e)
         );
 
@@ -263,7 +263,7 @@ export class SubscriptionService {
           .from("reminder_schedules")
           .delete()
           .eq("subscription_id", subscriptionId);
-        
+
         let blockchainResult;
         let syncStatus: "synced" | "partial" | "failed" = "synced";
 
@@ -308,6 +308,115 @@ export class SubscriptionService {
 
 
 
+
+  /**
+   * Restore a soft-deleted subscription
+   */
+  async restoreSubscription(
+    userId: string,
+    subscriptionId: string,
+  ): Promise<SubscriptionSyncResult> {
+    return await DatabaseTransaction.execute(async (client) => {
+      try {
+        const { data: existing, error: fetchError } = await client
+          .from("subscriptions")
+          .select("*")
+          .eq("id", subscriptionId)
+          .eq("user_id", userId)
+          .single();
+
+        if (fetchError || !existing) {
+          throw new Error("Subscription not found or access denied");
+        }
+
+        if (existing.status !== "deleted") {
+          throw new Error("Subscription is not deleted");
+        }
+
+        const { data: subscription, error: updateError } = await client
+          .from("subscriptions")
+          .update({
+            status: "active",
+            deleted_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", subscriptionId)
+          .eq("user_id", userId)
+          .select()
+          .single();
+
+        if (updateError) {
+          throw new Error(`Restore failed: ${updateError.message}`);
+        }
+
+        let blockchainResult;
+        let syncStatus: "synced" | "partial" | "failed" = "synced";
+
+        try {
+          blockchainResult = await blockchainService.syncSubscription(
+            userId,
+            subscriptionId,
+            "create", // We sync a restore as a create on the blockchain
+            subscription,
+          );
+
+          if (!blockchainResult.success) {
+            syncStatus = "partial";
+            logger.warn("Blockchain sync failed for subscription restore", {
+              subscriptionId,
+              error: blockchainResult.error,
+            });
+          }
+        } catch (blockchainError) {
+          syncStatus = "partial";
+          logger.error("Blockchain sync error during restore (non-fatal):", blockchainError);
+          blockchainResult = {
+            success: false,
+            error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
+          };
+        }
+
+        logger.info("Subscription restored", { subscriptionId, userId, syncStatus });
+        return { subscription, blockchainResult, syncStatus };
+      } catch (error) {
+        logger.error("Subscription restore failed:", error);
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * Hard-delete subscriptions that were soft-deleted over 30 days ago
+   */
+  async purgeDeletedSubscriptions(daysToKeep: number = 30): Promise<{ deletedCount: number }> {
+    try {
+      const purgeDate = new Date();
+      purgeDate.setDate(purgeDate.getDate() - daysToKeep);
+
+      // Perform the actual hard delete from the database
+      // This cascades into reminders and tags via foreign keys if configured correctly,
+      // otherwise, we are just relying on the direct delete.
+      const { data, error, count } = await supabase
+        .from("subscriptions")
+        .delete({ count: "exact" })
+        .eq("status", "deleted")
+        .lt("deleted_at", purgeDate.toISOString());
+
+      if (error) {
+        throw new Error(`Purge failed: ${error.message}`);
+      }
+
+      const deletedCount = count || 0;
+      if (deletedCount > 0) {
+        logger.info(`Purged ${deletedCount} soft-deleted subscriptions (older than ${daysToKeep} days).`);
+      }
+
+      return { deletedCount };
+    } catch (error) {
+      logger.error("Failed to purge deleted subscriptions:", error);
+      throw error;
+    }
+  }
 
   async pauseSubscription(
     userId: string,
@@ -604,6 +713,9 @@ export class SubscriptionService {
 
     if (options.status) {
       query = query.eq("status", options.status);
+    } else {
+      // By default exclude soft-deleted subscriptions
+      query = query.neq("status", "deleted");
     }
 
     if (options.category) {

@@ -28,7 +28,8 @@
     "check:migrations": "node ../scripts/check-migration-drift.js",
     "db:verify-rollback": "node ../scripts/verify-rollback-safety.js",
     "db:verify-rollback:group": "node ../scripts/verify-rollback-safety.js --group",
-    "validate:env": "ts-node scripts/validate-env.ts"
+    "validate:env": "ts-node scripts/validate-env.ts",
+    "audit:routes": "node scripts/validate-route-validation.js"
   },
   "dependencies": {
     "@syncro/shared": "*",

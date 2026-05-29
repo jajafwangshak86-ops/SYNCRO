@@ -80,11 +80,24 @@ export class ExternalServiceClient {
           const responseStatus = typeof response.status === 'number' ? response.status : 200;
 
           if (!responseOk) {
-            // Some status codes should not be retried (e.g., 400, 401, 403, 404)
-            if (responseStatus >= 400 && responseStatus < 500) {
-              throw new NonRetryableError(`External service ${this.serviceName} returned status ${responseStatus}`);
+            let responseBody = '';
+            try {
+              responseBody = await response.text();
+            } catch {
+              responseBody = '';
             }
-            throw new Error(`External service ${this.serviceName} returned status ${responseStatus}`);
+
+            const statusMessage = `External service ${this.serviceName} returned status ${responseStatus}${responseBody ? `: ${responseBody}` : ''}`;
+
+            // Some status codes should not be retried (e.g., 400, 401, 403, 404)
+            if (
+              (responseStatus >= 400 && responseStatus < 500) ||
+              responseBody.includes('invalid_grant') ||
+              responseBody.includes('interaction_required')
+            ) {
+              throw new NonRetryableError(statusMessage);
+            }
+            throw new Error(statusMessage);
           }
 
           const data = await response.json() as T;

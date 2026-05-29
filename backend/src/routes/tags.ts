@@ -15,6 +15,7 @@ import { validate } from '../middleware/validate';
 import { supabase } from '../config/database';
 import logger from '../config/logger';
 import { createTagSchema, notesSchema, addTagSchema } from '../schemas/tag';
+import { uuidParamSchema } from '../schemas/common';
 
 const router: express.Router = express.Router();
 router.use(authenticate);
@@ -80,7 +81,7 @@ router.post('/', validate(createTagSchema), async (req: AuthenticatedRequest, re
  * DELETE /api/tags/:id
  * Delete a tag and all its assignments (handled by ON DELETE CASCADE).
  */
-router.delete('/:id', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/:id', validate(uuidParamSchema, 'params'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });
@@ -160,7 +161,7 @@ router.post(
  * DELETE /api/subscriptions/:id/tags/:tagId
  * Remove a tag from a subscription.
  */
-router.delete('/subscriptions/:id/tags/:tagId', async (req: AuthenticatedRequest, res: Response) => {
+router.delete('/subscriptions/:id/tags/:tagId', validate(uuidParamSchema, 'params'), async (req: AuthenticatedRequest, res: Response) => {
   try {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ success: false, error: 'Unauthorized' });

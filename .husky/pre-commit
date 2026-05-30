@@ -21,3 +21,6 @@ fi
 npx lint-staged --config backend/.lintstagedrc.json --cwd backend
 npx lint-staged --config client/.lintstagedrc.json --cwd client
 
+
+# Block commits that introduce untracked TODO/FIXME in critical paths.
+node scripts/check-todos.mjs

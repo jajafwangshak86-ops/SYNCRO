@@ -264,6 +264,16 @@ app.get('/api/admin/metrics/failed-items', createAdminLimiter(), adminAuth, asyn
   }
 });
 
+app.get('/api/admin/metrics/api-latency', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const metrics = await monitoringService.getApiLatencyMetrics();
+    res.json(metrics);
+  } catch (error) {
+    logger.error('Error fetching API latency metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch API latency metrics' });
+  }
+});
+
 app.get('/api/admin/metrics/ops-summary', createAdminLimiter(), adminAuth, async (req, res) => {
   try {
     const w = req.query.window as string;
@@ -271,7 +281,7 @@ app.get('/api/admin/metrics/ops-summary', createAdminLimiter(), adminAuth, async
     if (isNaN(windowHours) || windowHours < 1 || windowHours > 720) {
       return res.status(400).json({ error: 'window must be between 1 and 720 hours' });
     }
-    const [subscriptions, renewals, activity, trials, throughput, latency, retries] =
+    const [subscriptions, renewals, activity, trials, throughput, latency, retries, apiLatency] =
       await Promise.all([
         monitoringService.getSubscriptionMetrics(),
         monitoringService.getRenewalMetrics(),
@@ -280,6 +290,7 @@ app.get('/api/admin/metrics/ops-summary', createAdminLimiter(), adminAuth, async
         monitoringService.getThroughputMetrics(windowHours),
         monitoringService.getLatencyMetrics(windowHours),
         monitoringService.getRetryMetrics(windowHours),
+        monitoringService.getApiLatencyMetrics(),
       ]);
     res.json({
       generated_at: new Date().toISOString(),
@@ -291,6 +302,7 @@ app.get('/api/admin/metrics/ops-summary', createAdminLimiter(), adminAuth, async
       throughput,
       latency,
       retries,
+      api_latency: apiLatency,
       db_pool: monitoringService.getPoolMetrics(),
     });
   } catch (error) {

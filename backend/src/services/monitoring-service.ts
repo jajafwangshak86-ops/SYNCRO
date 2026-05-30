@@ -1,6 +1,7 @@
 import { supabase, monitorPool, PoolMetrics } from '../config/database';
 import logger from '../config/logger';
 import { ExternalServiceClient, ServiceMetrics } from '../utils/external-service-client';
+import { apiLatencyService, EndpointLatencyMetrics } from './api-latency-service';
 
 // ─── Existing interfaces ────────────────────────────────────────────────────
 
@@ -651,6 +652,13 @@ export class MonitoringService {
                 return { type, total: count ?? 0, limit: safeLimit, offset, items };
             }
         })(), contextId);
+    }
+
+    /**
+     * Get API latency percentiles per endpoint family.
+     */
+    async getApiLatencyMetrics(): Promise<EndpointLatencyMetrics[]> {
+        return apiLatencyService.getLatencyMetrics();
     }
 }
 

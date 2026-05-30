@@ -70,6 +70,7 @@ import { telegramCommandService } from './services/telegram-command-service';
 import calendarRouter from './routes/calendar';
 import userPreferencesRoutes from './routes/user-preferences';
 import reminderSettingsRoutes from './routes/reminder-settings';
+import { blockchainReconciliationService } from './services/blockchain-reconciliation-service';
 import { errorHandler } from './middleware/errorHandler';
 import { swaggerSpec } from './swagger';
 
@@ -365,6 +366,23 @@ app.post('/api/admin/expiry/process', createAdminLimiter(), adminAuth, async (re
   } catch (error) {
     logger.error('Error processing expiries:', error);
     res.status(500).json({ success: false, error: 'Failed to process expiries' });
+  }
+});
+
+// ── Blockchain Reconciliation Endpoints ──────────────────────────────────────
+
+app.post('/api/admin/reconciliation/run', createAdminLimiter(), adminAuth, async (req, res) => {
+  try {
+    const windowDays = parseInt(req.query.window_days as string) || 90;
+    const autoRepair = req.query.auto_repair === 'true';
+    const result = await blockchainReconciliationService.runReconciliation(windowDays, autoRepair);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    logger.error('Error running blockchain reconciliation:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Reconciliation failed',
+    });
   }
 });
 

@@ -16,6 +16,7 @@
 
 import { readFileSync, statSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 // --- Configuration ---------------------------------------------------------
 
@@ -78,39 +79,39 @@ function isCritical(path) {
   );
 }
 
-// --- Scan -------------------------------------------------------------------
+function runScan({ warnOnly = false } = {}) {
+  const blocking = [];
+  const warnings = [];
 
-const warnOnly = process.argv.includes("--warn-only");
+  for (const file of getTrackedFiles()) {
+    if (isIgnored(file)) continue;
+    if (file.endsWith("check-todos.mjs")) continue; // don't scan the scanner
+    if (!SOURCE_EXTENSIONS.has(extOf(file))) continue;
 
-const blocking = [];
-const warnings = [];
+    let content;
+    try {
+      if (statSync(file).isDirectory()) continue;
+      content = readFileSync(file, "utf8");
+    } catch {
+      continue; // deleted / unreadable
+    }
 
-for (const file of getTrackedFiles()) {
-  if (isIgnored(file)) continue;
-  if (file.endsWith("check-todos.mjs")) continue; // don't scan the scanner
-  if (!SOURCE_EXTENSIONS.has(extOf(file))) continue;
+    const lines = content.split("\n");
+    lines.forEach((line, i) => {
+      if (!TODO_TOKEN.test(line)) return;
+      if (TRACKED_TODO.test(line)) return; // properly tracked, OK
 
-  let content;
-  try {
-    if (statSync(file).isDirectory()) continue;
-    content = readFileSync(file, "utf8");
-  } catch {
-    continue; // deleted / unreadable
+      const entry = {
+        file,
+        line: i + 1,
+        text: line.trim().slice(0, 120),
+      };
+      if (isCritical(file)) blocking.push(entry);
+      else warnings.push(entry);
+    });
   }
 
-  const lines = content.split("\n");
-  lines.forEach((line, i) => {
-    if (!TODO_TOKEN.test(line)) return;
-    if (TRACKED_TODO.test(line)) return; // properly tracked, OK
-
-    const entry = {
-      file,
-      line: i + 1,
-      text: line.trim().slice(0, 120),
-    };
-    if (isCritical(file)) blocking.push(entry);
-    else warnings.push(entry);
-  });
+  return { blocking, warnings };
 }
 
 // --- Report -----------------------------------------------------------------
@@ -122,27 +123,50 @@ function printGroup(label, entries) {
   }
 }
 
-if (warnings.length) {
-  printGroup("⚠️  Untracked TODO/FIXME (non-critical, warning)", warnings);
-}
+function main() {
+  const warnOnly = process.argv.includes("--warn-only");
+  const { blocking, warnings } = runScan({ warnOnly });
 
-if (blocking.length) {
-  printGroup("❌ Untracked TODO/FIXME in CRITICAL paths", blocking);
-  console.log(
-    "\nEvery TODO/FIXME in critical paths must reference a GitHub issue:\n" +
-      "    // TODO(#123): short description\n" +
-      "    // FIXME(#123): short description\n\n" +
-      "1. Open an issue, label it `tech-debt` + a severity.\n" +
-      "2. Reference its number in the comment.\n" +
-      "3. Add a row to DEBT.md.\n"
-  );
-  if (!warnOnly) {
-    process.exit(1);
+  if (warnings.length) {
+    printGroup("⚠️  Untracked TODO/FIXME (non-critical, warning)", warnings);
+  }
+
+  if (blocking.length) {
+    printGroup("❌ Untracked TODO/FIXME in CRITICAL paths", blocking);
+    console.log(
+      "\nEvery TODO/FIXME in critical paths must reference a GitHub issue:\n" +
+        "    // TODO(#123): short description\n" +
+        "    // FIXME(#123): short description\n\n" +
+        "1. Open an issue, label it `tech-debt` + a severity.\n" +
+        "2. Reference its number in the comment.\n" +
+        "3. Add a row to DEBT.md.\n"
+    );
+    if (!warnOnly) {
+      process.exit(1);
+    }
+  }
+
+  if (!blocking.length && !warnings.length) {
+    console.log("✅ No untracked TODO/FIXME found.");
+  } else if (!blocking.length) {
+    console.log("\n✅ No blocking issues (critical paths are clean).");
   }
 }
 
-if (!blocking.length && !warnings.length) {
-  console.log("✅ No untracked TODO/FIXME found.");
-} else if (!blocking.length) {
-  console.log("\n✅ No blocking issues (critical paths are clean).");
+const isMain =
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (isMain) {
+  main();
 }
+
+export {
+  CRITICAL_PATHS,
+  SOURCE_EXTENSIONS,
+  TODO_TOKEN,
+  TRACKED_TODO,
+  isCritical,
+  extOf,
+  isIgnored,
+};

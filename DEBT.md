@@ -44,6 +44,7 @@ Adjust this list in `scripts/check-todos.mjs` (`CRITICAL_PATHS`) and here togeth
 |-------|----------|----------|-------|-------------|-------|
 | #496 | `client/app/api/csp-report/route.ts` | high | _unassigned_ | Replace stubbed PayPal integration with real client | 2026-05-29 |
 | #494 | `backend/...` | med | _unassigned_ | Price changes / consolidation suggestions fetched from DB | 2026-05-29 |
+| #698 | `backend/src/services/api-latency-service.ts:68` | med | _unassigned_ | Redis-based API latency storage (currently in-memory fallback) | 2026-05-31 |
 
 > The rows above are seeded from existing issue summaries (`ISSUE_496_*`,
 > `ISSUE_494_*`). Verify the file paths and owners, then keep this table in sync

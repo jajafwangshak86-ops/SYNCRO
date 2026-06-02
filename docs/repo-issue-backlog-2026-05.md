@@ -1,5 +1,7 @@
 # Repository Issue Backlog — May 2026
 
+> **Roadmap:** Issue clusters and MVP exit criteria live in [ROADMAP.md](./ROADMAP.md).
+
 ## #35 — [P0] Eliminate accidental service-role usage from client server code
 
 **Scope:** client-api

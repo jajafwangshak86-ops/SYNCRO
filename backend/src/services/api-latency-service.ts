@@ -65,7 +65,7 @@ export class ApiLatencyService {
     try {
       const redisStore = RateLimitRedisStore.getInstance();
       if (redisStore.isAvailable()) {
-        // TODO: Implement Redis-based storage once we have access to raw Redis client
+        // TODO(#698): Implement Redis-based storage once we have access to raw Redis client
         this.recordToMemory(family, latencyMs);
       } else {
         this.recordToMemory(family, latencyMs);
